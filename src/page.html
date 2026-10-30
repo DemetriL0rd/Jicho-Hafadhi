@@ -401,7 +401,7 @@ tr.upd-row > td{background:var(--sunk);padding:18px 20px}
       <p class="status" id="status" role="status"></p>
       <div class="field fallback" id="manualAI" hidden>
         <p class="privacy" id="fbReason">Use an AI chat instead.</p>
-        <ol class="steps">
+        <ol class="steps" id="fbSteps">
           <li>Press <b>Copy prompt</b>. It includes the ad, form and messages you pasted above.</li>
           <li>Open a new chat with an AI assistant, paste the prompt and send it. Attach any screenshots there.</li>
           <li>Copy the AI's whole answer, paste it below and press <b>Apply answer</b>.</li>
@@ -829,7 +829,7 @@ $("aiBtn").onclick = async ()=>{
   if(!texts.some(Boolean) && !images.length){ setStatus("Paste the ad, the form questions or their messages first.", true); return; }
   if(!sample){
     if(sampleState==="loading"){ setStatus("Still connecting. Try again in a few seconds."); return; }
-    showFallback(); return; }
+    openInClaude(texts); return; }
   if(texts.some(Boolean) && !current.rules) runRules();
   ctl = new AbortController();
   $("aiBtn").disabled=true; $("stopBtn").hidden=false; setStatus("Getting an AI second opinion. This usually takes 20–60 seconds.");
@@ -844,6 +844,27 @@ $("aiBtn").onclick = async ()=>{
     else setStatus(ERR[code] || "Something went wrong getting the AI second opinion. Try again.", true);
   }finally{ $("aiBtn").disabled=false; $("stopBtn").hidden=true; }
 };
+// No built-in AI here (GitHub Pages, Netlify, a downloaded file): open a new Claude chat with the prompt already filled in
+const CLAUDE_NEW = "https://claude.ai/new";
+function openInClaude(texts){
+  const p = buildPrompt(texts, false) + "\n\n(If screenshots are attached to this chat, use them as evidence too.)";
+  let url = CLAUDE_NEW + "?q=" + encodeURIComponent(p), filled = true;
+  if(url.length > 14000){ url = CLAUDE_NEW; filled = false; } // very long texts don't fit in a link: open a blank chat and paste instead
+  try{ navigator.clipboard.writeText(p).catch(()=>{}); }catch(e){}
+  const w = window.open(url, "_blank"); // "noopener" would make window.open return null, so detach the opener by hand
+  if(w){ try{ w.opener = null; }catch(e){} }
+  $("manualAI").hidden = false;
+  $("fbReason").textContent = w===null ? "Your browser blocked the new tab. Allow pop-ups for this site, or use the steps below." : filled
+    ? "A new Claude chat has opened in another tab with the job details filled in."
+    : "A new Claude chat has opened in another tab. The job text was too long to fill in automatically, so it has been copied: paste it into the chat.";
+  const steps = $("fbSteps"); steps.replaceChildren();
+  [ filled ? "In the Claude tab, press send. Sign in first if it asks. Attach any screenshots there." : "In the Claude tab, paste (Ctrl+V or ⌘V, or long-press and Paste on a phone), then press send.",
+    "When Claude answers, copy its whole reply.",
+    "Come back to this tab, paste the reply below and press Apply answer. The second opinion is added to your score." ]
+    .forEach(t=>{ const li=document.createElement("li"); li.textContent=t; steps.append(li); });
+  setStatus(w===null ? "Couldn't open Claude. Check the steps below." : "Claude opened in a new tab. Paste its answer below when it replies.");
+  $("answerIn").focus({preventScroll:true});
+}
 function showFallback(reason){
   $("manualAI").hidden=false;
   $("fbReason").textContent = (reason ? reason+" " : "The AI second opinion can't run automatically here. ") + "You can get one from any AI chat instead.";
@@ -1097,7 +1118,7 @@ function useLocalLog(){
   $("logEmpty").textContent="No tests saved yet. In this copy of the page, tests are saved in this browser only, so download the CSV to share them with your team.";
   db.collection("tests").onSnapshot(snap=>{ logDocs=snap.docs.map(x=>({id:x.id,...x.data()})); renderLog(); });
 }
-if(!window.claude){ sampleState="none"; useLocalLog(); }
+if(!window.claude){ sampleState="none"; useLocalLog(); $("aiBtn").textContent="Get an AI second opinion ↗"; $("aiBtn").title="Opens a new Claude chat with this job filled in"; }
 else {
   claude.use("sample").then(async s=>{ sample=s; sampleState = s ? "ready" : "none";
     if(!s) return;
